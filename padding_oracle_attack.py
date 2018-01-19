@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-import os
 
+import os
 from base64 import b64decode, b64encode
 from binascii import hexlify
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -49,20 +49,6 @@ class Cookie():
         cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
         return cipher.decryptor().update(cipertext)
 
-
-def decrypt_attack(mycookie, cookie):
-    cookie = b64decode(cookie)
-    
-    blocks = [cookie[i:i+16] for i in range(0,len(cookie),16)]
-    plaintext = b""
-    for i in range(1, len(blocks)):
-        last_block = blocks[i]
-        last_second_block = blocks[i-1]
-        pre_block = b''.join(blocks[:i-1])
-
-        plaintext += decrypt_last_block(mycookie, pre_block, last_second_block, last_block)
-    return plaintext
-
 def decrypt_last_block(mycookie, pre_block, last_second_block, last_block):
 
     known_bytes = b''
@@ -85,9 +71,23 @@ def decrypt_last_block(mycookie, pre_block, last_second_block, last_block):
             known_bytes = bytes([n+1]) + known_bytes
     return known_bytes
 
-def encrypt_attact(mycookie, cookie, plaintext):
-
+def decrypt_attack(mycookie, cookie):
     cookie = b64decode(cookie)
+    
+    blocks = [cookie[i:i+16] for i in range(0,len(cookie),16)]
+    plaintext = b""
+    for i in range(1, len(blocks)):
+        last_block = blocks[i]
+        last_second_block = blocks[i-1]
+        pre_block = b''.join(blocks[:i-1])
+
+        plaintext += decrypt_last_block(mycookie, pre_block, last_second_block, last_block)
+    return plaintext
+
+def encrypt_attact(mycookie, cookie, plaintext):
+    cookie = b64decode(cookie)
+
+    #padding plaintext
     p = 16 - (len(plaintext) % 16)
     plaintext = plaintext.encode() + bytes([p] * p)
 
@@ -100,20 +100,19 @@ def encrypt_attact(mycookie, cookie, plaintext):
     cookie_plain = decrypt_attack(mycookie, b64encode(cookie))[-16:]
     plaintext_blocks = [plaintext[i:i+16] for i in range(0, len(plaintext), 16)]
 
-    final_ciphertext = cookie[-16:]
+    ciphertext = cookie[-16:]
 
     for i in range(len(plaintext_blocks) - 1, -1, -1):
         plain = plaintext_blocks[i]
-        cipher = cookie[-32:-16]
-        ciphertext = bytes([cipher[j] ^ cookie_plain[j] ^ plain[j] for j in range(16)])  
+        last_second_cookie = cookie[-32:-16]
+        cipher = bytes([last_second_cookie[j] ^ cookie_plain[j] ^ plain[j] for j in range(16)])  
 
-        cookie = cookie[:-32] + ciphertext
+        cookie = cookie[:-32] + cipher
         cookie_plain = decrypt_attack(mycookie, b64encode(cookie))[-16:]
 
-        final_ciphertext = ciphertext + final_ciphertext
-
-    return b64encode(final_ciphertext).decode()
-
+        ciphertext = cipher + ciphertext
+        
+    return b64encode(ciphertext).decode()
 
 if __name__ == "__main__":
     message = "The MAC bug allows an attacker to submit arbitrary ciphertexts and IV's which are processed by the server in CBC mode"
