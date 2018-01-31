@@ -25,7 +25,6 @@ def block_size(plaintext, key, encrypt_fn):
             return bsize - size
         i += 1
 
-
 def parse(string):
     string = string.decode()
     string = string.split('&')
@@ -79,16 +78,14 @@ def ecb_unknown_input_attack(plaintext):
     return unpaddingPKCS7(known_secret)
 
 def ecb_profile_attack(secret_key):
-    bsize = block_size(b"foo@bar.com", secret_key, profile_encrypt)
-    email = b"foo@bar.com"
-    while len(profile_for(email)) % bsize != 0:
-        email += b"m"
-    ciphertext = profile_encrypt(email[:bsize-11] + b"admin" + email[bsize-6:-1], secret_key)
-    encrypted_admin = ciphertext[bsize-5:bsize]
-    ciphertext = ciphertext[:-5] + encrypted_admin
-    print(profile_role(ciphertext, secret_key))
+    #bsize = block_size(b"foo@bar.com", secret_key, profile_encrypt)
+    email1 = b'foo@bar.coadmin' + bytes([0x0b] * 11)
+    email2 = b'foo@bar.commm'
 
-
+    x1 = profile_encrypt(email1)
+    x2 = profile_encrypt(email2)
+    x = x2[0:32] + x1[16:32]
+    print(profile_role(x))
 
 def test():
     def print_output(num, output):
