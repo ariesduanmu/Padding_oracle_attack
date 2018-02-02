@@ -39,14 +39,6 @@ class Cookie():
         email = email.replace(b'&',b'').replace(b'=',b'')
         return b'email=' + email + b'&uid=10&role=user'
 
-def ecb_detect(encrypt_fn):
-    key = os.urandom(16)
-    plaintext = bytearray([1] * 100)
-    ciphertext = encrypt_fn(plaintext, key)
-    if ciphertext[16:32] == ciphertext[32:48]:
-        return True
-    return False
-
 def block_size(plaintext, encrypt_fn, key = None):
     i = 1
     
@@ -59,6 +51,13 @@ def block_size(plaintext, encrypt_fn, key = None):
             return bsize - size
         i += 1
 
+def ecb_detect(encrypt_fn):
+    key = os.urandom(16)
+    plaintext = bytearray([1] * 100)
+    ciphertext = encrypt_fn(plaintext, key)
+    if ciphertext[16:32] == ciphertext[32:48]:
+        return True
+    return False
 
 def change_profile_role_attack(cookie):
     email1 = b'foo@bar.coadmin' + bytes([0x0b] * 11)
