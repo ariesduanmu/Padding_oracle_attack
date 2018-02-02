@@ -7,7 +7,7 @@
   - [x] ECB cut-and-paste(change_profile_role_attack)
 
 - CBC Attack
-  - [ ] CBC bitflipping attack
+  - [x] CBC bitflipping attack
   - [x] CBC padding oracle attack
 
 - CTR Attack

@@ -11,8 +11,9 @@ def padding_validation(text):
         raise ValueError('{} bad padding'.format(text))
     return text[:-i]
 
-def encrypt_ecb(plaintext,key):
-    plaintext = paddingPKCS7(plaintext, len(key))
+def encrypt_ecb(plaintext, key, pad = True):
+    if pad:
+        plaintext = paddingPKCS7(plaintext, len(key))
     encrypt= Cipher(algorithms.AES(key), modes.ECB(), backend=default_backend()).encryptor()
     return encrypt.update(plaintext)
 

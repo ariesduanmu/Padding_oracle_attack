@@ -1,4 +1,4 @@
-# Basic XOR Attack
+# Basic XOR & Classic Attack
 
 ### Include
 
